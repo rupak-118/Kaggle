@@ -8,7 +8,7 @@ import seaborn as sns
 from tqdm import tqdm
 
 from sklearn.model_selection import KFold, StratifiedKFold, cross_val_score
-# from sklearn.ensemble import ExtraTreesClassifier, AdaBoost Classifier
+from lightgbm import LGBMClassifier
 from sklearn.linear_model import LogisticRegression
 
 ## Importing datasets
@@ -26,7 +26,7 @@ feat_corr = train.corr()
     1) Imbalanced classification problem (~3.6% pos_class)
     2) test has more rows than train. Pseudo-labelling might be required
     3) Missing values have been replaced with -1
-    4) Most features are uncorrelated
+    4) Most features are uncorrelated, especially with the target. Very few features are slightly correlated
 '''
 
 
@@ -34,8 +34,8 @@ feat_corr = train.corr()
 def add_noise(series, noise_level):
     return series * (1 + noise_level * np.random.randn(len(series)))
 
-def target_encode(trn_series = None, tst_series = None, target = None, min_samples_leaf = 1,
-                  smoothing = 1, noise_level = 0):
+#def target_encode(trn_series = None, tst_series = None, target = None, min_samples_leaf = 1,
+#                  smoothing = 1, noise_level = 0):
     
     
 
@@ -130,7 +130,7 @@ sm = SMOTE(ratio = oversampling_ratio)
 undersampling_ratio = {0:100000, 1:21000}
 enn = EditedNearestNeighbours(undersampling_ratio)
 
-X_res, y_res = enn.fit_sample(X, y)
+#X_res, y_res = enn.fit_sample(X, y)
 
 ''' 
 SMOTE implementation takes a lot of time on full dataset. Perform feature selection before resampling.
@@ -138,15 +138,96 @@ SMOTE is not very effective and might overfit on high-dimensional data.
 s = x + {u * (x* - x)}; 0<u<1, s --> synthetic sample, x* --> one of the k-nearest neighbour of x
 '''
 
-## Model 1 : Light GBM
-import lightgbm as lgb
-train_data = lgb.Dataset(X_res, label = y_res)
-params = {'num_leaves':151, 'objective': 'binary', 'max_depth':9, 'learning_rate':0.1, 
-         'max_bin':222, 'feature_fraction':0.9, 'bagging_fraction':0.7, 'lambda_l1': 10,
-         'lambda_l2':1}
-params['metric'] = ['auc','binary_logloss']
-num_rounds = 150
-model_lgb = lgb.train(params, train_data, num_rounds)
+## Building structure for ensemble models
+class Ensemble(object):
+    def __init__(self, n_splits, stacker, base_models):
+        self.n_splits = n_splits
+        self.stacker = stacker
+        self.base_models = base_models
+
+    def fit_predict(self, X, y, X_test):
+        X = np.array(X)
+        y = np.array(y)
+        X_test = np.array(X_test)
+
+        folds = list(StratifiedKFold(n_splits=self.n_splits, shuffle=True, random_state = 42).split(X, y))
+
+        S_train = np.zeros((X.shape[0], len(self.base_models)))
+        S_test = np.zeros((X_test.shape[0], len(self.base_models)))
+        
+        for i, clf in enumerate(self.base_models):
+            S_test_i = np.zeros((X_test.shape[0], self.n_splits))
+
+            for j, (train_idx, val_idx) in enumerate(folds):
+                X_train, X_val, y_train, y_val = X[train_idx], X[val_idx], y[train_idx], y[val_idx]
+                print ("Fit %s fold %d" % (str(clf).split('(')[0], j+1))
+                clf.fit(X_train, y_train)
+                
+                y_pred = clf.predict_proba(X_val)[:,1]                
+                S_train[val_idx, i] = y_pred
+                S_test_i[:, j] = clf.predict_proba(X_test)[:,1]
+            S_test[:, i] = S_test_i.mean(axis=1)
+
+        results = cross_val_score(self.stacker, S_train, y, cv=5, scoring='roc_auc')
+        print("Stacker score: %.5f" % (results.mean()))
+
+        self.stacker.fit(S_train, y)
+        res = self.stacker.predict_proba(S_test)[:,1]
+        return res
+
+
+# LightGBM params
+lgb_params = {}
+lgb_params['learning_rate'] = 0.02
+lgb_params['n_estimators'] = 650
+lgb_params['max_bin'] = 10
+lgb_params['subsample'] = 0.8
+lgb_params['subsample_freq'] = 10  
+lgb_params['min_child_samples'] = 500
+lgb_params['feature_fraction'] = 0.9
+lgb_params['bagging_freq'] = 1
+lgb_params['seed'] = 42
+
+lgb_params2 = {}
+lgb_params2['n_estimators'] = 1090
+lgb_params2['learning_rate'] = 0.02   
+lgb_params2['subsample'] = 0.7
+lgb_params2['subsample_freq'] = 2
+lgb_params2['num_leaves'] = 16
+lgb_params2['feature_fraction'] = 0.8
+lgb_params2['bagging_freq'] = 1
+lgb_params2['seed'] = 42
+
+lgb_params3 = {}
+lgb_params3['n_estimators'] = 1100
+lgb_params3['max_depth'] = 4
+lgb_params3['learning_rate'] = 0.02
+lgb_params3['feature_fraction'] = 0.95
+lgb_params3['bagging_freq'] = 1
+lgb_params3['seed'] = 42
+
+lgb_model = LGBMClassifier(**lgb_params)
+lgb_model2 = LGBMClassifier(**lgb_params2)
+lgb_model3 = LGBMClassifier(**lgb_params3)
+
+log_model = LogisticRegression()
+       
+stack = Ensemble(n_splits=5,
+        stacker = log_model,
+        base_models = (lgb_model, lgb_model2, lgb_model3))        
+        
+ensemble_pred = stack.fit_predict(train_df, y, test_df)        
+
+
+### Model 1 : Light GBM
+#import lightgbm as lgb
+#train_data = lgb.Dataset(X_res, label = y_res)
+#params = {'num_leaves':151, 'objective': 'binary', 'max_depth':9, 'learning_rate':0.1, 
+#         'max_bin':222, 'feature_fraction':0.9, 'bagging_fraction':0.7, 'lambda_l1': 10,
+#         'lambda_l2':1}
+#params['metric'] = ['auc','binary_logloss']
+#num_rounds = 150
+#model_lgb = lgb.train(params, train_data, num_rounds)
 
 ## Model 2 : Define XGBoost model
 from xgboost import XGBClassifier
@@ -176,14 +257,16 @@ print("Std. dev. for {} folds = {}".format(cv_folds, np.std(metric_val)))
 
 ## Applying Grid Search to find the best model and the best parameters
 from sklearn.model_selection import GridSearchCV
-parameters = [{'n_estimators' : [51, 100, 301, 500],
-               'max_depth' : [6,9],
-               'learning_rate' : [0.01, 0.1]}
+from sklearn.metrics import make_scorer
+parameters = [{'n_estimators' : [101, 500, 780],
+               'max_depth' : [9, 12],
+               'learning_rate' : [0.05, 0.1]}
              ]
 
+gini_score = make_scorer(gini_normalized, greater_is_better = True)
 grid_search = GridSearchCV(estimator = model_xgb, 
                            param_grid = parameters,
-                           scoring = gini_normalized,
+                           scoring = gini_score,
                            cv = 5, n_jobs = -1)
 grid_search = grid_search.fit(X, y)
 best_metric = grid_search.best_score_
@@ -191,22 +274,6 @@ best_params = grid_search.best_params_
 grid_search.grid_scores_ # See all scores
 
 
-## Create a LightGBM-compatible metric from Gini
-#def gini_xgb(preds, train_data):
-#    labels = train_data.get_label()
-#    gini_score = gini_normalized(labels, preds)
-#    return [('gini', gini_score)]
-
-
-
-## Check validation score
-#pred_val = model_lgb.predict(X_val)
-#pred_trn = model_lgb.predict(X_train)
-#gini_normalized(y_val, pred_val)
-#gini_normalized(y_train, pred_trn)
-
-
-''' Resample properly to improve score '''
 
 ## Make test predictions
 preds = model_xgb.predict_proba(X_test)[:,1]
