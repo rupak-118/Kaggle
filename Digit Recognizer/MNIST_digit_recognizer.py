@@ -1,4 +1,4 @@
-# Kaggle Digit Recognizer problem
+## Kaggle Digit Recognizer problem
 
 # Importing the libraries
 import numpy as np
@@ -46,15 +46,13 @@ X_test = sc_X.transform(X_test)
 
 print 'Pre-processing done'
 
-''' We'll try different ML/DL models. Particularly, SVM and RF combined along with 
-    dimensionality reduction techniques (PCA, LDA etc.). Among Neural Networks, we'll
-    try simple ANN along with CNNs and explore use of Dropout. We'll also try ensembles '''
+''' We'll try different ML models. Particularly, SVM and RF combined along with 
+    dimensionality reduction techniques (PCA, LDA etc.) '''
 
-### Part 1 - ML models
 
 ## Dimensionality reduction techniques
 ''' We check if dimensionality reduction is required by plotting correlation charts between
-    different features. PCA, LDA, t-SNE plots are plotted. '''
+    different features. PCA and LDA plots are plotted. '''
 
 
 # Draw a heatmap using seaborn (correlation plot of features)
@@ -88,7 +86,7 @@ X_train_lda = lda.fit_transform(X_train, labels_train)
 X_test_lda = lda.transform(X_test)
 
 
- Model 1 : ML - SVM with dimensionality reduction (PCA, LDA)
+# Model 1 : ML - SVM with dimensionality reduction (PCA, LDA)
 from sklearn.svm import SVC
 ''' Image classification essentially involves non-linear operations. Hence, kernel SVM is used ''' 
 classifier_svm_pca = SVC(kernel = 'rbf', probability = False, C = 10)

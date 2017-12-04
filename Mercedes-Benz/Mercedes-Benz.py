@@ -1,4 +1,4 @@
-# Mercedes-Benz Green Challenge
+### Mercedes-Benz Green Challenge
 
 # Importing the basic libraries
 import numpy as np
@@ -45,8 +45,8 @@ cat_feat_test = test.iloc[:, 1:9].values
 y_train = train['y'].values
 
 # Removing unimportant features
-''' 1) Numerical features which have very few 0/1 across train and test do not add any information
-    to our models. Hence, they can be done away with.    
+''' Numerical features which have very few zeros/ones across train and test do not add 
+    any valuable information to our models. Hence, they can be done away with.    
 '''
 num_feat = np.append(num_feat_train, num_feat_test, axis = 0)
 col_sum = np.sum(num_feat, axis = 0)
@@ -117,7 +117,7 @@ model = XGBRegressor(max_depth = 3, learning_rate = 0.05, n_estimators = 300, nt
 model.fit(df_prac_train, y_train, eval_metric = "rmse")
 
 
-# Model 2 : SVR
+# Model 2 : Support Vector Regression
 from sklearn.svm import SVR
 model = SVR(kernel = 'rbf', C = 20)
 model.fit(num_feat_train, y_train)
@@ -150,7 +150,7 @@ def r2_metric(y_true, y_pred):
     return (1 - SS_res/(SS_tot + K.epsilon()))
 
 
-# Initialising the ANN
+## Initialising the ANN
 model_NN = Sequential()
 
 # Adding the input layer and one hidden layer
@@ -182,13 +182,13 @@ model_NN.add(Dense(units = 1, kernel_initializer = 'glorot_uniform', activation 
 model_NN.compile(optimizer = 'adam', loss = 'mean_squared_error', metrics = [r2_metric])
 model_NN.optimizer.lr = 0.01
 
-# Fitting the ANN to the Training Set
+## Fitting the ANN to the Training Set
 history = model_NN.fit(feat_comb_train, y_train, validation_split = 0.2, batch_size = 32, 
                             epochs = 20)
 
 
 
-# Applying Grid Search to find the best model and the best parameters
+## Applying Grid Search to find the best model and the best parameters
 from sklearn.model_selection import GridSearchCV
 parameters = [{'n_estimators' : [100, 300, 501],
                'max_depth' : [3, 6, 8],
@@ -208,7 +208,7 @@ grid_search.grid_scores_ # See all scores
 
 
 
-# Ensembling - Averaging, Stacking etc.
+## Ensembling - Weighted averaging
 y_pred_RF1 = model.predict(num_feat_test)
 y_pred_XGB1 = model.predict(num_feat_test)
 y_pred_RF2 = model.predict(num_feat_test_pca) # PCA
@@ -216,7 +216,7 @@ y_pred_lin = model.predict(num_feat_test)
 y_pred_SVR = model.predict(num_feat_test) 
 y_pred_SVR2 = model.predict(num_feat_test_pca) # with outliers in train data
 
-#ensemble_pred = (0.2 * y_pred_RF1) + (0.15 * y_pred_RF2) + (0.2 * y_pred_XGB1) + (0.1 * y_pred_lin) + (0.2 * y_pred_SVR) + (0.15 * y_pred_SVR2)
+ensemble_pred = (0.2 * y_pred_RF1) + (0.15 * y_pred_RF2) + (0.2 * y_pred_XGB1) + (0.1 * y_pred_lin) + (0.2 * y_pred_SVR) + (0.15 * y_pred_SVR2)
 
 # Predicting Test Set Results
 y_pred = model_NN.predict(feat_comb_test)
