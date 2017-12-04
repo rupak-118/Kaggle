@@ -130,11 +130,11 @@ sm = SMOTE(ratio = oversampling_ratio)
 undersampling_ratio = {0:100000, 1:21000}
 enn = EditedNearestNeighbours(undersampling_ratio)
 
-#X_res, y_res = enn.fit_sample(X, y)
+X_res, y_res = enn.fit_sample(X, y)
 
 ''' 
-SMOTE implementation takes a lot of time on full dataset. Perform feature selection before resampling.
-SMOTE is not very effective and might overfit on high-dimensional data.
+SMOTE implementation takes a lot of time on full dataset. Perform feature selection before 
+resampling. SMOTE is not very effective and might overfit on high-dimensional data.
 s = x + {u * (x* - x)}; 0<u<1, s --> synthetic sample, x* --> one of the k-nearest neighbour of x
 '''
 
@@ -176,7 +176,7 @@ class Ensemble(object):
         return res
 
 
-# LightGBM params
+## Parameters for different LightGBM models to be used in layer 1 of the ensemble
 lgb_params = {}
 lgb_params['learning_rate'] = 0.02
 lgb_params['n_estimators'] = 650
@@ -210,6 +210,7 @@ lgb_model = LGBMClassifier(**lgb_params)
 lgb_model2 = LGBMClassifier(**lgb_params2)
 lgb_model3 = LGBMClassifier(**lgb_params3)
 
+# Layer 2 of stacked ensemble
 log_model = LogisticRegression()
        
 stack = Ensemble(n_splits=5,
@@ -219,17 +220,7 @@ stack = Ensemble(n_splits=5,
 ensemble_pred = stack.fit_predict(train_df, y, test_df)        
 
 
-### Model 1 : Light GBM
-#import lightgbm as lgb
-#train_data = lgb.Dataset(X_res, label = y_res)
-#params = {'num_leaves':151, 'objective': 'binary', 'max_depth':9, 'learning_rate':0.1, 
-#         'max_bin':222, 'feature_fraction':0.9, 'bagging_fraction':0.7, 'lambda_l1': 10,
-#         'lambda_l2':1}
-#params['metric'] = ['auc','binary_logloss']
-#num_rounds = 150
-#model_lgb = lgb.train(params, train_data, num_rounds)
-
-## Model 2 : Define XGBoost model
+## Define XGBoost model
 from xgboost import XGBClassifier
 model_xgb = XGBClassifier(max_depth = 9, learning_rate = 0.05,
                             n_estimators = 101, objective = "binary:logistic", 
